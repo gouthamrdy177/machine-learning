@@ -132,5 +132,5 @@ class TradingSystem:
             realized_pnl=self.broker.realized_pnl,
             trade_count=self.risk.state.trade_count,
             halted=self.monitor.killed,
-            halt_reason=self.risk.state.halt_reason or (self.monitor.events[-1].message if self.monitor.events else None),
+            halt_reason=self.risk.state.halt_reason if self.monitor.killed else None,
         )

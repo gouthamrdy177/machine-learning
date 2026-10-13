@@ -52,8 +52,8 @@ class SimpleLogisticModel:
 @dataclass
 class SimpleMLFilter:
     lookback: int = 30
-    long_threshold: float = 0.55
-    short_threshold: float = 0.45
+    long_threshold: float = 0.5
+    short_threshold: float = 0.5
     model: SimpleLogisticModel = field(default_factory=SimpleLogisticModel)
 
     def _features(self, candles: List[Candle]) -> List[float]:
