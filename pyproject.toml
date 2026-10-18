@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intraday-trading"
+version = "0.1.0"
+description = "Automatic intraday trading simulation scaffold (paper trading/backtesting)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["intraday_trading*"]
