@@ -21,6 +21,7 @@ def generate_sample_data(path: Path, rows: int = 300) -> None:
     random.seed(7)
     ts = datetime(2026, 1, 2, 9, 15, tzinfo=timezone.utc)
     price = 2500.0
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=["timestamp", "open", "high", "low", "close", "volume"])
         writer.writeheader()
