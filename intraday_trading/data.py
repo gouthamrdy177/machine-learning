@@ -22,21 +22,32 @@ class CSVDataProvider:
         self.file_path = Path(file_path)
 
     def historical(self) -> List[Candle]:
+        if not self.file_path.exists():
+            raise FileNotFoundError(f"CSV file not found: {self.file_path}")
         candles: List[Candle] = []
         with self.file_path.open("r", newline="", encoding="utf-8") as handle:
             reader = csv.DictReader(handle)
-            for row in reader:
-                ts = datetime.fromisoformat(row["timestamp"].replace("Z", "+00:00"))
-                candles.append(
-                    Candle(
-                        timestamp=ts,
-                        open=float(row["open"]),
-                        high=float(row["high"]),
-                        low=float(row["low"]),
-                        close=float(row["close"]),
-                        volume=float(row["volume"]),
+            required = {"timestamp", "open", "high", "low", "close", "volume"}
+            fieldnames = set(reader.fieldnames or [])
+            missing = sorted(required - fieldnames)
+            if missing:
+                raise ValueError(f"CSV missing required columns: {', '.join(missing)}")
+
+            for line_no, row in enumerate(reader, start=2):
+                try:
+                    ts = datetime.fromisoformat(row["timestamp"].replace("Z", "+00:00"))
+                    candles.append(
+                        Candle(
+                            timestamp=ts,
+                            open=float(row["open"]),
+                            high=float(row["high"]),
+                            low=float(row["low"]),
+                            close=float(row["close"]),
+                            volume=float(row["volume"]),
+                        )
                     )
-                )
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"Invalid CSV data at line {line_no}: {exc}") from exc
         return candles
 
     def realtime(self) -> Iterable[Candle]:

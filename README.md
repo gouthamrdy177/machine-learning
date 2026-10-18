@@ -1,86 +1,115 @@
 # machine-learning
 
-Automatic intraday trading system scaffold (educational/paper-trading first).
+Automatic intraday trading system scaffold focused on **local paper-trading/backtesting**.
+
+## Important safety and scope warnings
+
+- This repository is for **education and simulation only**.
+- It is **not financial advice** and does **not** guarantee recommendations or returns.
+- It does **not** connect to a broker and does **not** place live orders.
+- Suggested buy/sell timing is generated from supplied historical/replay CSV data and can be wrong.
 
 ## What is implemented
 
-- Scope and constraints configuration (exchange, symbol, timeframe, risk/position limits)
-- Data layer for historical and replayed real-time candles from CSV
-- Data validation, UTC timestamp normalization, and gap detection
-- Strategy framework with trend-following, mean-reversion, and breakout strategies
-- Optional ML signal filter using a lightweight logistic model
-- Risk management engine with:
-  - per-trade risk-based sizing
-  - max daily loss breaker
-  - max drawdown breaker
-  - max trades/day and consecutive loss breaker
-  - spread/slippage guards
+- Environment-variable based configuration (`IT_*`)
+- CSV OHLCV ingestion, normalization, validation, and data-gap detection
+- Composite strategy framework (trend, mean-reversion, breakout) + optional ML signal filter
 - Paper execution engine with fees/slippage simulation
-- Monitoring events + kill switch
+- Risk controls (position sizing, max daily loss, max drawdown, trade limits, breakers)
 - Walk-forward validation helper
-- Tests for key risk/data/strategy behavior
+- Local Streamlit dashboard for visualizing results and transparent non-live signals
 
-## Quick start
+## Setup
 
-This project is a **paper-trading/backtesting simulation**. It currently reads CSV market data only. No broker API credentials are required.
-
-1. Create and activate a virtual environment:
+### macOS/Linux
 
 ```bash
-python -m venv .venv
-# macOS/Linux:
+python3 -m venv .venv
 source .venv/bin/activate
-# Windows PowerShell:
-# .venv\Scripts\Activate.ps1
-```
-
-2. Install the project from your cloned checkout:
-
-```bash
 python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
-3. Copy and configure environment defaults (optional overrides):
+### Windows PowerShell
 
-```bash
-# macOS/Linux:
-cp .env.example .env
-# Windows PowerShell:
-# Copy-Item .env.example .env
+```powershell
+py -m venv .venv
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e .
 ```
 
-The app reads runtime overrides from OS environment variables (for example `IT_SYMBOL`, `IT_EXCHANGE`, `IT_TIMEFRAME_MINUTES`). `.env` is a safe template for local configuration, and is not committed.
+Optional config template:
 
-4. Generate sample OHLCV CSV data (relative paths are supported):
+```bash
+# macOS/Linux
+cp .env.example .env
+```
+
+```powershell
+# Windows PowerShell
+Copy-Item .env.example .env
+```
+
+## CLI usage (existing behavior preserved)
+
+Generate sample data:
 
 ```bash
 python -m intraday_trading.main --generate-sample data/sample_ohlcv.csv
 ```
 
-5. Run the trading simulation + walk-forward check:
+Run simulation + walk-forward output:
 
 ```bash
 python -m intraday_trading.main --csv data/sample_ohlcv.csv
 ```
 
-6. Run tests:
+Run tests:
 
 ```bash
 python -m unittest discover -s tests
 ```
 
-## Data format
+## Dashboard usage
 
-CSV must contain columns:
+Launch locally:
 
-- `timestamp` (ISO format)
+```bash
+streamlit run intraday_trading/dashboard.py
+```
+
+In the dashboard you can:
+
+- Upload an OHLCV CSV or use generated sample data
+- Configure symbol, timeframe, initial capital, per-trade risk, max daily loss, max drawdown, stop loss, take profit, and max position size
+- Run backtest simulation + walk-forward validation
+- View:
+  - Candlestick chart and BUY/SELL markers
+  - Equity curve and drawdown
+  - PnL, trade count, win rate (when exits exist), data-gap count
+  - Trade table (`timestamp`, `side`, `price`, `quantity`, `stop_loss`, `take_profit`, `realized_pnl`, `reason`)
+- See latest transparent BUY/SELL/HOLD/NO_TRADE recommendation with estimated risk, stop-loss/take-profit, quantity, and explanation
+- Rank user-provided symbol lists **only when matching symbol CSVs are uploaded**; missing files are marked as insufficient data
+
+## Expected CSV schema
+
+Required columns:
+
+- `timestamp` (ISO-8601, for example `2026-01-02T09:15:00+00:00`)
 - `open`
 - `high`
 - `low`
 - `close`
 - `volume`
 
-## Important
+Example:
 
-This is a framework baseline for controlled risk and automated execution flow. It does **not** guarantee profits and should be validated extensively in simulation/paper trading before any live deployment.
+```csv
+timestamp,open,high,low,close,volume
+2026-01-02T09:15:00+00:00,2500,2501.2,2498.7,2500.4,8200
+2026-01-02T09:20:00+00:00,2500.4,2502.1,2499.9,2501.7,7900
+```
+
+If CSV data is missing/invalid (missing columns, parse errors, invalid OHLC constraints, empty history), the CLI/helpers/dashboard fail gracefully with actionable error messages.

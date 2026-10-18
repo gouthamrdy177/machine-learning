@@ -22,6 +22,26 @@ class RunResult:
     halt_reason: str | None
 
 
+@dataclass
+class ExecutedTrade:
+    timestamp: str
+    side: str
+    price: float
+    quantity: int
+    stop_loss: float | None
+    take_profit: float | None
+    realized_pnl: float | None
+    reason: str | None
+
+
+@dataclass
+class RunDetails:
+    result: RunResult
+    equity_curve: List[tuple[str, float]]
+    drawdown_curve: List[tuple[str, float]]
+    trades: List[ExecutedTrade]
+
+
 class TradingSystem:
     def __init__(
         self,
@@ -57,14 +77,25 @@ class TradingSystem:
         return pstdev(closes) / mu
 
     def run(self, candles: List[Candle]) -> RunResult:
+        return self.run_detailed(candles).result
+
+    def run_detailed(self, candles: List[Candle]) -> RunDetails:
         if self.ml_filter:
             self.ml_filter.train(candles)
         history: List[Candle] = []
+        equity_curve: List[tuple[str, float]] = []
+        drawdown_curve: List[tuple[str, float]] = []
+        trades: List[ExecutedTrade] = []
+        peak_equity = self.broker.mark_to_market(candles[0].close) if candles else 0.0
 
         for candle in candles:
             history.append(candle)
             equity = self.broker.mark_to_market(candle.close)
             self.risk.on_tick(candle.timestamp, equity)
+            peak_equity = max(peak_equity, equity)
+            drawdown = ((peak_equity - equity) / peak_equity) if peak_equity > 0 else 0.0
+            equity_curve.append((candle.timestamp.isoformat(), equity))
+            drawdown_curve.append((candle.timestamp.isoformat(), drawdown))
 
             if self.monitor.killed:
                 break
@@ -89,6 +120,19 @@ class TradingSystem:
                 if ret <= -self.config.strategy.stop_loss_pct or ret >= self.config.strategy.take_profit_pct:
                     pnl = self.broker.close_position(candle, slippage)
                     self.risk.record_trade(pnl)
+                    reason = "Stop loss hit" if ret <= -self.config.strategy.stop_loss_pct else "Take profit hit"
+                    trades.append(
+                        ExecutedTrade(
+                            timestamp=candle.timestamp.isoformat(),
+                            side=Side.SELL.value,
+                            price=candle.close,
+                            quantity=abs(self.broker.fills[-1].quantity),
+                            stop_loss=self.entry_price * (1.0 - self.config.strategy.stop_loss_pct),
+                            take_profit=self.entry_price * (1.0 + self.config.strategy.take_profit_pct),
+                            realized_pnl=pnl,
+                            reason=reason,
+                        )
+                    )
                     self.monitor.emit("EXIT", "Risk exit", {"pnl": pnl})
                     self.entry_price = None
                     continue
@@ -118,19 +162,50 @@ class TradingSystem:
                 if qty > 0:
                     self.broker.execute_market(Side.BUY, qty, candle, slippage)
                     self.entry_price = price
+                    trades.append(
+                        ExecutedTrade(
+                            timestamp=candle.timestamp.isoformat(),
+                            side=Side.BUY.value,
+                            price=candle.close,
+                            quantity=qty,
+                            stop_loss=price * (1.0 - self.config.strategy.stop_loss_pct),
+                            take_profit=price * (1.0 + self.config.strategy.take_profit_pct),
+                            realized_pnl=None,
+                            reason="Strategy entry",
+                        )
+                    )
                     self.monitor.emit("ENTRY", "Opened long", {"qty": float(qty), "price": price})
             elif signal == Signal.SELL and self.broker.position_qty >= 0:
                 if self.broker.position_qty > 0:
+                    qty = abs(self.broker.position_qty)
                     pnl = self.broker.close_position(candle, slippage)
                     self.risk.record_trade(pnl)
+                    trades.append(
+                        ExecutedTrade(
+                            timestamp=candle.timestamp.isoformat(),
+                            side=Side.SELL.value,
+                            price=candle.close,
+                            quantity=qty,
+                            stop_loss=self.entry_price * (1.0 - self.config.strategy.stop_loss_pct) if self.entry_price else None,
+                            take_profit=self.entry_price * (1.0 + self.config.strategy.take_profit_pct) if self.entry_price else None,
+                            realized_pnl=pnl,
+                            reason="Strategy exit",
+                        )
+                    )
                     self.monitor.emit("EXIT", "Closed long", {"pnl": pnl})
                     self.entry_price = None
 
         final_equity = self.broker.mark_to_market(candles[-1].close)
-        return RunResult(
+        result = RunResult(
             final_equity=final_equity,
             realized_pnl=self.broker.realized_pnl,
             trade_count=self.risk.state.trade_count,
             halted=self.monitor.killed,
             halt_reason=self.risk.state.halt_reason if self.monitor.killed else None,
+        )
+        return RunDetails(
+            result=result,
+            equity_curve=equity_curve,
+            drawdown_curve=drawdown_curve,
+            trades=trades,
         )
