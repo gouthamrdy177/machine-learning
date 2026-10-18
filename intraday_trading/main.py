@@ -80,13 +80,22 @@ def main() -> None:
     provider = CSVDataProvider(args.csv)
     config = default_config()
     pipeline = DataPipeline(config.market.timeframe_minutes)
-    candles = pipeline.run(provider.historical())
+    try:
+        candles = pipeline.run(provider.historical())
+    except (FileNotFoundError, ValueError) as exc:
+        raise SystemExit(f"Unable to load CSV data: {exc}") from exc
     gaps = pipeline.detect_gaps(candles)
 
     system = build_system()
     result = system.run(candles)
 
-    wf = walk_forward_validate(build_system, candles, folds=3)
+    try:
+        wf = walk_forward_validate(build_system, candles, folds=3)
+    except ValueError as exc:
+        wf = None
+        wf_error = str(exc)
+    else:
+        wf_error = None
 
     print("=== Trading Run Summary ===")
     print(f"Final equity: {result.final_equity:.2f}")
@@ -97,9 +106,12 @@ def main() -> None:
         print(f"Halt reason: {result.halt_reason}")
     print(f"Detected gaps: {len(gaps)}")
     print("=== Walk-forward Validation ===")
-    print(f"Folds: {wf.folds}")
-    print(f"Average final equity: {wf.avg_final_equity:.2f}")
-    print(f"Average realized PnL: {wf.avg_realized_pnl:.2f}")
+    if wf:
+        print(f"Folds: {wf.folds}")
+        print(f"Average final equity: {wf.avg_final_equity:.2f}")
+        print(f"Average realized PnL: {wf.avg_realized_pnl:.2f}")
+    else:
+        print(f"Skipped: {wf_error}")
 
 
 if __name__ == "__main__":
